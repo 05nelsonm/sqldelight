@@ -1,4 +1,9 @@
   project.buildscript.repositories {
+      maven {
+          url = "https://maven.pkg.github.com/hfhbd/kobol"
+          name = "GitHubPackages"
+          credentials(PasswordCredentials)
+      }
     maven {
       url "file://${projectDir.absolutePath}/../../../../build/localMaven"
     }

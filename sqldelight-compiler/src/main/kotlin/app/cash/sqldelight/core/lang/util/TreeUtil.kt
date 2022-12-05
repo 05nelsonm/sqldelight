@@ -29,6 +29,7 @@ import app.cash.sqldelight.dialect.api.PrimitiveType.TEXT
 import com.alecstrong.sql.psi.core.psi.AliasElement
 import com.alecstrong.sql.psi.core.psi.SqlAnnotatedElement
 import com.alecstrong.sql.psi.core.psi.SqlColumnName
+import com.alecstrong.sql.psi.core.psi.SqlCompoundSelectStmt
 import com.alecstrong.sql.psi.core.psi.SqlCreateTableStmt
 import com.alecstrong.sql.psi.core.psi.SqlCreateViewStmt
 import com.alecstrong.sql.psi.core.psi.SqlCreateVirtualTableStmt
@@ -36,6 +37,7 @@ import com.alecstrong.sql.psi.core.psi.SqlExpr
 import com.alecstrong.sql.psi.core.psi.SqlModuleArgument
 import com.alecstrong.sql.psi.core.psi.SqlPragmaName
 import com.alecstrong.sql.psi.core.psi.SqlResultColumn
+import com.alecstrong.sql.psi.core.psi.SqlSetStmt
 import com.alecstrong.sql.psi.core.psi.SqlTableName
 import com.alecstrong.sql.psi.core.psi.SqlTypeName
 import com.alecstrong.sql.psi.core.psi.SqlTypes
@@ -200,6 +202,18 @@ private val IntRange.length: Int
 
 fun PsiElement.rawSqlText(
   replacements: List<Pair<IntRange, String>> = emptyList(),
+): String = if (this is SqlSetStmt && setSetterClause != null) {
+  val sql = setSetterClause!!.getRawSqlText(replacements)
+  "SELECT $sql"
+} else if (this is SqlCompoundSelectStmt) {
+  val removeInto = selectStmtList.mapNotNull {
+    it.selectIntoClause?.range?.let { it to "" }
+  }
+  getRawSqlText(replacements + removeInto)
+} else getRawSqlText(replacements)
+
+private fun PsiElement.getRawSqlText(
+  replacements: List<Pair<IntRange, String>> = emptyList(),
 ): String {
   return (replacements + rangesToReplace())
     .sortedBy { it.first.first }
@@ -209,7 +223,7 @@ fun PsiElement.rawSqlText(
       { (totalRemoved, sqlText), (range, replacement) ->
         (totalRemoved + (range.length - replacement.length)) to sqlText.replaceRange(range - totalRemoved, replacement)
       },
-    ).second
+    ).second.trim()
 }
 
 val PsiElement.range: IntRange
