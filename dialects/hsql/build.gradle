@@ -14,7 +14,10 @@ dependencies {
 
   compileOnly libs.intellij.ideImpl
 
-  testImplementation libs.intellij.ideImpl
+  testImplementation(libs.intellij.ideImpl) {
+    exclude group: "org.jetbrains.kotlinx", module: "kotlinx-coroutines-core"
+  }
+  testImplementation libs.kotlin.coroutines.core
   testImplementation libs.junit
   testImplementation libs.truth
   testImplementation project(':sqldelight-compiler:dialect')
