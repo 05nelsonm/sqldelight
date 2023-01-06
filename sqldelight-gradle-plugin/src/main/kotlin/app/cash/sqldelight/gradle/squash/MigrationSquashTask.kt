@@ -34,7 +34,8 @@ abstract class MigrationSquashTask : SqlDelightWorkerTask() {
   @Input
   val pluginVersion = VERSION
 
-  @Input val projectName: Property<String> = project.objects.property(String::class.java)
+  @get:Input
+  abstract val projectName: Property<String>
 
   @Nested lateinit var properties: SqlDelightDatabasePropertiesImpl
 

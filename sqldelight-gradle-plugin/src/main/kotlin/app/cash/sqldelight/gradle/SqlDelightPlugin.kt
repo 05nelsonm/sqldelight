@@ -24,18 +24,23 @@ import app.cash.sqldelight.gradle.kotlin.linkSqlite
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Dependency
+import org.gradle.api.provider.Property
 import org.gradle.tooling.provider.model.ToolingModelBuilder
 import org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
 import org.gradle.util.GradleVersion
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsProjectExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.sources.DefaultKotlinSourceSet
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
 abstract class SqlDelightPlugin : Plugin<Project> {
-  private val android = AtomicBoolean(false)
-  private val kotlin = AtomicBoolean(false)
+  abstract val android: Property<Boolean>
+  abstract val kotlin: Property<Boolean>
+
+  init {
+    android.set(false)
+    kotlin.set(false)
+  }
 
   @get:Inject
   abstract val registry: ToolingModelBuilderRegistry
@@ -61,16 +66,15 @@ abstract class SqlDelightPlugin : Plugin<Project> {
     project.plugins.withId("com.android.feature", androidPluginHandler)
     project.plugins.withId("com.android.dynamic-feature", androidPluginHandler)
 
-    val kotlinPluginHandler = { _: Plugin<*> -> kotlin.set(true) }
+    val kotlinPluginHandler = { _: Plugin<*> ->
+      kotlin.set(true)
+      project.setupSqlDelightTasks(afterAndroid = false)
+    }
     project.plugins.withId("org.jetbrains.kotlin.multiplatform", kotlinPluginHandler)
     project.plugins.withId("org.jetbrains.kotlin.android", kotlinPluginHandler)
     project.plugins.withId("org.jetbrains.kotlin.jvm", kotlinPluginHandler)
     project.plugins.withId("org.jetbrains.kotlin.js", kotlinPluginHandler)
     project.plugins.withId("kotlin2js", kotlinPluginHandler)
-
-    project.afterEvaluate {
-      project.setupSqlDelightTasks(afterAndroid = false)
-    }
   }
 
   private fun Project.setupSqlDelightTasks(afterAndroid: Boolean) {
@@ -121,11 +125,11 @@ abstract class SqlDelightPlugin : Plugin<Project> {
         databases.add(
           objects.newInstance(SqlDelightDatabase::class.java, project, "Database").apply {
             packageName.set(project.packageName())
-            project.sqliteVersion()?.let(::dialect)
+            project.sqliteVersion()?.let {
+              dialect.convention(it)
+            }
           },
         )
-      } else if (databases.isEmpty()) {
-        logger.warn("SQLDelight Gradle plugin was applied but there are no databases set up.")
       }
 
       project.tasks.register("generateSqlDelightInterface") {
@@ -138,16 +142,17 @@ abstract class SqlDelightPlugin : Plugin<Project> {
         it.description = "Aggregation task which runs every migration task for every given source"
       }
 
-      databases.forEach { database ->
-        if (database.packageName.getOrNull() == null && android.get() && !isMultiplatform) {
+      databases.configureEach { database ->
+        if (database.packageName.orNull == null && android.get() && !isMultiplatform) {
           database.packageName.set(project.packageName())
         }
-        if (!database.addedDialect && android.get() && !isMultiplatform) {
-          project.sqliteVersion()?.let(database::dialect)
+        database.dialect.convention(project.dependencies.create("app.cash.sqldelight:sqlite-3-18-dialect:$VERSION"))
+        if (android.get() && !isMultiplatform) {
+          project.sqliteVersion()?.let {
+            database.dialect.convention(it)
+          }
         }
-        if (!database.addedDialect) {
-          database.dialect("app.cash.sqldelight:sqlite-3-18-dialect:$VERSION")
-        }
+
         database.registerTasks()
       }
 
@@ -162,13 +167,13 @@ abstract class SqlDelightPlugin : Plugin<Project> {
       return modelName == SqlDelightPropertiesFile::class.java.name
     }
 
-    override fun buildAll(modelName: String, project: Project): Any {
+    override fun buildAll(modelName: String, project: Project): SqlDelightPropertiesFile {
       return SqlDelightPropertiesFileImpl(
         databases = databases.map { it.getProperties() },
         currentVersion = VERSION,
         minimumSupportedVersion = MINIMUM_SUPPORTED_VERSION,
-        dialectJars = databases.first().configuration.files,
-        moduleJars = databases.first().moduleConfiguration.files,
+        dialectJars = databases.first().configuration.get().files,
+        moduleJars = databases.first().moduleConfiguration.get().files,
       )
     }
   }
